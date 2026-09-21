@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sdqe"
+version = "0.1.0"
+description = "Synthetic Data Quality Evaluation: utility and privacy metrics for synthetic tabular data"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "Minsu Park" }]
+keywords = ["synthetic data", "privacy", "utility", "evaluation", "pMSE", "CAP"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+dependencies = [
+    "numpy>=1.23",
+    "pandas>=1.5",
+    "scipy>=1.9",
+    "scikit-learn>=1.1",
+    "matplotlib>=3.6",
+    "joblib>=1.2",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+gpu = ["torch>=2.0"]
+dev = ["pytest>=7.0", "ruff>=0.4", "statsmodels>=0.13"]
+
+[project.scripts]
+sdqe = "sdqe.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: long-running regression tests (deselect with -m 'not slow')"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["UP007", "UP045", "B008"]

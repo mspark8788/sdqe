@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# 도구 캐시
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 실행 산출물
+results/
+results_test/
+*.log
+
+# 작업 지시 문서 (내부용)
+CLAUDE.md
+INSTALL_NOTES.md
+.claude/
+
+# 참고문헌 원문 (저작권물, 배포 불가)
+docs/*.pdf
+
+# 비공개 실데이터
+test_data/가치성장_*
+
+# OS / 편집기
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
