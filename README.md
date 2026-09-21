@@ -1,22 +1,16 @@
 # sdqe
 
-**S**ynthetic **D**ata **Q**uality **E**valuation — 합성(재현) 데이터의 유용성과 안전성을 정량 평가하는 CLI 도구
+**S**ynthetic **D**ata **Q**uality **E**valuation — 합성데이터 유용성·안전성 평가 도구
 
 [![Python](https://img.shields.io/badge/python-3.9%2B-blue)](https://www.python.org/)
 [![Code style](https://img.shields.io/badge/lint-ruff-orange)](https://docs.astral.sh/ruff/)
 
-원본 데이터와 합성 데이터를 비교해 6종의 품질 지표를 계산하고, 원본 데이터만으로 산출한 임계값과
+원본 데이터와 합성 데이터를 비교해 품질 지표를 계산하고, 원본 데이터만으로 산출한 임계값과
 대조해 통과 여부를 판정합니다. 「합성데이터 생성·활용 안내서」(개인정보보호위원회, 2024)와
 안전성 지표 임계값 연구[[2]](#참고문헌)의 산식을 구현했습니다.
 
 - **6종 지표** — 구별·추론·연결 위험도(안전성), 1차원·2차원 유사성·pMSE(유용성)
 - **임계값 자동 산출** — 시뮬레이션(재표본) 또는 분포가정(정규근사) 방식
-- **재현 가능** — 모든 난수는 `--random_seed`로 제어하고, 모든 산출물은 JSON으로 저장
-- **한글 지원** — 변수명에 한글·공백·특수문자 사용 가능, 그림의 한글 폰트 자동 설정
-
-```
-설치 → sdqe report --original orig.csv --synthetic syn.csv → results/report.json
-```
 
 ## 목차
 
@@ -29,7 +23,7 @@
 평가는 세 단계로 구성되며 각 단계는 독립 실행할 수 있습니다.
 
 ```
-① preprocess              ② threshold               ③ metric / utility / privacy
+① preprocess              ② threshold               ③ metric (utility / privacy)
    원본 + 합성                원본만                     원본 + 전처리된 합성
    정합성 검증                판정 기준값 산출            지표값 계산 후 ②와 비교해 판정
    초과 레코드 삭제
@@ -67,11 +61,6 @@ python -m venv .venv
 python3 -m venv .venv
 source .venv/bin/activate
 ```
-
-프롬프트 앞에 `(.venv)`가 붙으면 활성화된 것입니다. 새 터미널을 열 때마다 다시 활성화해야 합니다.
-
-> Windows에서 `실행할 수 없습니다` 오류가 나면 실행 정책 때문입니다.
-> `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` 를 먼저 실행하십시오.
 
 ### 3. 설치
 
