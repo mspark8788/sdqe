@@ -45,15 +45,69 @@
 
 ## 설치
 
-Python 3.9 이상이 필요합니다.
+Python 3.9 이상이 필요합니다. 설치되어 있는지는 `python --version`으로 확인하십시오.
+
+### 1. 내려받기
 
 ```bash
-pip install .              # 실행 환경
-pip install -e ".[dev]"    # 개발 환경 (pytest, ruff, statsmodels)
-pip install ".[gpu]"       # cosine 거리 GPU 가속 (torch)
+git clone https://github.com/mspark8788/sdqe.git
+cd sdqe
 ```
 
-설치 후 `sdqe` 명령을 사용할 수 있으며, `python -m sdqe`로도 동일하게 실행됩니다.
+### 2. 가상환경 만들기 (권장)
+
+프로젝트 전용 공간을 만들어 시스템 파이썬을 건드리지 않습니다.
+
+```bash
+# Windows (PowerShell)
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# macOS / Linux
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+프롬프트 앞에 `(.venv)`가 붙으면 활성화된 것입니다. 새 터미널을 열 때마다 다시 활성화해야 합니다.
+
+> Windows에서 `실행할 수 없습니다` 오류가 나면 실행 정책 때문입니다.
+> `Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass` 를 먼저 실행하십시오.
+
+### 3. 설치
+
+```bash
+pip install .
+```
+
+`sdqe` 명령이 만들어집니다. 용도에 따라 아래를 대신 쓸 수 있습니다.
+
+| 명령 | 언제 쓰나 | 추가되는 것 |
+|---|---|---|
+| `pip install .` | 평가만 수행할 때 | — |
+| `pip install -e ".[dev]"` | 코드를 수정할 때 | 소스 수정이 즉시 반영(`-e`), pytest·ruff·statsmodels |
+| `pip install ".[gpu]"` | cosine 거리를 GPU로 계산할 때 | torch |
+
+`[dev]`, `[gpu]`는 선택 묶음이며 따옴표가 필요합니다(셸이 `[ ]`를 해석하지 않도록).
+
+### 4. 확인
+
+```bash
+sdqe --help
+```
+
+`python -m sdqe --help`로도 동일하게 동작합니다. 실제로 평가가 도는지 보려면
+아래 [빠른 시작](#빠른-시작)의 명령을 그대로 실행하십시오. 저장소에 표본 데이터가 들어 있어
+별도 준비 없이 결과까지 확인할 수 있습니다.
+
+### clone 없이 설치하기
+
+코드를 수정할 계획이 없다면 한 줄로 끝낼 수도 있습니다.
+
+```bash
+pip install git+https://github.com/mspark8788/sdqe.git
+```
+
+이 경우 저장소 파일(표본 데이터, 설정 예시)은 받아지지 않고 `sdqe` 명령만 설치됩니다.
 
 ## 빠른 시작
 
