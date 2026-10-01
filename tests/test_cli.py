@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import shutil
+import sys
+
 import pytest
 import yaml
 from conftest import ORIGIN_CSV, SYNTH_CSV
@@ -10,6 +13,16 @@ from sdqe import io_utils
 from sdqe.cli import main
 
 ORIG, SYN = str(ORIGIN_CSV), str(SYNTH_CSV)
+
+
+@pytest.fixture(autouse=True)
+def _isolated_inputs(tmp_path_factory, monkeypatch):
+    """preprocess 가 입력 옆에 ``*_processed.csv`` 를 쓰므로 test_data/ 대신 사본을 씁니다."""
+    folder = tmp_path_factory.mktemp("inputs")
+    for name, src in (("ORIG", ORIGIN_CSV), ("SYN", SYNTH_CSV)):
+        dst = folder / src.name
+        shutil.copyfile(src, dst)
+        monkeypatch.setattr(sys.modules[__name__], name, str(dst))
 
 
 def test_threshold_then_preprocess_then_cached_metric(tmp_path):

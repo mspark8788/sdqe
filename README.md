@@ -101,7 +101,6 @@ pip install git+https://github.com/mspark8788/sdqe.git
 ## 빠른 시작
 
 전처리부터 전 지표 평가까지 한 번에 실행합니다. 저장소에 포함된 [test_data/](test_data/) 샘플로
-
 바로 확인할 수 있습니다.
 
 ```bash
@@ -128,6 +127,17 @@ linkage_risk           value=0.716016  judgement=NOT PASSED
 > **Note**
 > `linkage_risk`는 준식별자(`--quasi_identifiers`)와 민감정보(`--sensitive_attributes`)를
 > 지정해야 계산합니다. 지정하지 않으면 경고를 남기고 해당 지표만 건너뜁니다.
+
+파일 이름을 `<이름>_origin.csv`, `<이름>_synth.csv`로 맞춰 두면 폴더만 지정해도 됩니다.
+결과는 같은 폴더의 `<이름>_results/`에 저장됩니다. 자세한 규칙은
+[폴더로 지정하기](#폴더로-지정하기---data_dir)를 참고하십시오.
+
+```bash
+sdqe report --data_dir test_data \
+            --quasi_identifiers gender race marital_status \
+            --sensitive_attributes income
+# → test_data/adult_results/report.json
+```
 
 단계별 실행은 [CLI 레퍼런스](#cli-레퍼런스)를 참고하십시오.
 
@@ -220,7 +230,7 @@ CAP_j = (합성에서 K, T 가 모두 일치하는 레코드 수) / (합성에�
 모든 값이 동일한 상수 열은 연관성 계산이 불가능하므로 `--drop_constant_columns on`(기본)에서
 제외하고, 제외한 열 목록을 결과에 기록합니다.
 
-### pmse — Propensity Mean Squared Error
+### pMSE — Propensity Mean Squared Error
 
 원본과 합성을 결합한 뒤 "합성 여부"를 예측하는 판별 모델을 학습하고, 예측 확률이 합성 비율에서
 이탈한 정도를 측정합니다. 구별이 어려울수록(유용성이 높을수록) 값이 작아집니다.
@@ -287,8 +297,10 @@ ERROR --method distribution is not supported for metric 'pmse'.
 
 | 인자 | 기본값 | 설명 |
 |---|---|---|
-| `--original`, `--synthetic` | (필수) | csv / parquet / xlsx. CSV는 utf-8-sig로 읽고 실패 시 cp949로 재시도 |
-| `--output_dir` | `./results` | 결과 저장 위치 |
+| `--original`, `--synthetic` | `--data_dir` 없으면 필수 | csv / parquet / xlsx. CSV는 utf-8-sig로 읽고 실패 시 cp949로 재시도 |
+| `--data_dir` | 없음 | `<prefix>_origin` / `<prefix>_synth` 파일이 있는 폴더. `--original`/`--synthetic` 대신 사용 |
+| `--prefix` | 자동 | `--data_dir`에 데이터 쌍이 여럿일 때 사용할 이름 |
+| `--output_dir` | `./results` | 결과 저장 위치. `--data_dir` 사용 시 기본값은 `<폴더>/<prefix>_results` |
 | `--categorical_columns` | dtype 추론 | 범주형으로 취급할 열. 숫자 코드형 범주 변수는 반드시 지정 |
 | `--exclude_columns` | 없음 | 모든 계산에서 제외할 열 |
 | `--random_seed` | `42` | 분할·표본추출·모델 학습의 모든 난수 |
@@ -296,6 +308,57 @@ ERROR --method distribution is not supported for metric 'pmse'.
 | `--verbose` | off | 상세 로그 |
 
 전체 인자는 `sdqe <서브커맨드> --help`로 확인할 수 있습니다.
+
+### 폴더로 지정하기 (`--data_dir`)
+
+모든 서브커맨드는 `--original`/`--synthetic` 대신 폴더 하나를 받을 수 있습니다.
+
+```
+data/
+├── adult_origin.csv              ← 원본
+├── adult_synth.csv               ← 합성 (전처리 전)
+├── adult_synth_processed.csv     ← 전처리된 합성 (preprocess 후 자동 생성)
+└── adult_results/                ← 결과 (자동 생성)
+```
+
+```bash
+sdqe report --data_dir data
+```
+
+| 규칙 | 내용 |
+|---|---|
+| 파일 이름 | `<prefix>_origin.<확장자>`, `<prefix>_synth.<확장자>`. 대소문자 무관 |
+| 확장자 | csv, parquet, xlsx. 같은 prefix에 형식만 다른 파일이 둘 있으면 에러 |
+| 탐색 범위 | 폴더 바로 아래만 (하위 폴더 제외). Excel 잠금 파일(`~$...`)은 무시 |
+| 쌍이 하나 | 자동 선택 |
+| 쌍이 여럿 | 목록을 보여 주고 중단. `--prefix adult`처럼 골라서 실행 |
+| 결과 위치 | `<폴더>/<prefix>_results/`. `--output_dir`을 주면 그쪽이 우선 |
+| `threshold` | 원본(`_origin`)만 있어도 실행 |
+
+한쪽 파일이 없으면 어떤 파일이 빠졌는지 알려 주고 중단합니다.
+
+```
+ERROR No data pair found in data.
+  Missing synthetic file for: adult
+  Expected '<prefix>_origin.<ext>' and '<prefix>_synth.<ext>' (ext: csv/parquet/xlsx).
+```
+
+**단계별로 이어서 실행하기.** 같은 `--data_dir`을 주면 모든 단계가 같은 결과 폴더를 씁니다.
+`preprocess`를 먼저 실행했다면 이후 `metric`/`utility`/`privacy`는 `_synth` 원본 대신
+**전처리된 합성 데이터**(`<prefix>_results/preprocess/synthetic_processed.csv`)를 평가합니다.
+`report`와 같은 동작이며, 어느 파일을 썼는지 로그에 표시됩니다.
+
+```bash
+sdqe threshold  --data_dir data --metric inference_risk
+sdqe preprocess --data_dir data --reduction_method inference_distance
+sdqe privacy    --data_dir data --quasi_identifiers gender race --sensitive_attributes income
+```
+
+전처리 이후 `_synth` 파일이 수정되었다면 전처리본이 오래된 것이므로 원본을 평가하고
+`preprocess`를 다시 실행하라고 경고합니다.
+
+`--data_dir`과 `--original`/`--synthetic`을 함께 주면 에러입니다. 설정 파일에 한쪽이 있고
+CLI에 다른 쪽을 주면 CLI 쪽을 씁니다.
 
 ### preprocess
 
@@ -323,6 +386,11 @@ sdqe preprocess --original orig.csv --synthetic syn.csv --output_dir ./results \
 
 산출물: `preprocess/validation.json`, `preprocess/reduction.json`,
 `preprocess/synthetic_processed.csv`(원자료 표기 유지, 열 순서만 원본 기준).
+
+같은 전처리본을 **입력 합성 파일 옆에도** `<이름>_processed.csv`로 저장합니다
+(`adult_synth.csv` → `adult_synth_processed.csv`). 전처리 전 파일을 처리된 파일로 착각해 가져가는
+실수를 막기 위한 사본입니다. 입력 형식과 관계없이 CSV로 저장하며, 다시 실행하면 덮어씁니다.
+입력 폴더에 쓸 수 없으면 경고만 남기고 계속 진행합니다.
 
 ### threshold
 
@@ -392,7 +460,12 @@ random_seed: 42
 sdqe report --config config.yaml
 ```
 
+`original`/`synthetic` 대신 `data_dir: data`(필요하면 `prefix: adult`)를 써도 됩니다.
+
 ## 출력 구조
+
+`--output_dir` 아래(기본 `./results`, `--data_dir` 사용 시 `<폴더>/<prefix>_results`)에
+다음과 같이 저장됩니다.
 
 ```
 results/

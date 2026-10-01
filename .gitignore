@@ -33,3 +33,7 @@ test_data/가치성장_*
 Thumbs.db
 .idea/
 .vscode/
+
+# --data_dir 결과 폴더
+*_results/
+test_data/*_processed.csv

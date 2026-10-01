@@ -5,6 +5,9 @@
 3. (선택) 초과 레코드 삭제 -> ``preprocess/reduction.json``
 4. 처리된 합성 데이터 저장 -> ``preprocess/synthetic_processed.csv``
    값은 원자료 표기를 그대로 보존하고 열 순서만 원본에 맞춥니다.
+   같은 내용을 입력 합성 파일 옆에도 ``<이름>_processed.csv`` 로 저장합니다. 원본 ``_synth`` 를
+   전처리된 파일로 착각해 가져가는 실수를 줄이기 위한 사본이며, 다음 단계는 결과 폴더의
+   파일을 씁니다. 입력 폴더에 쓸 수 없으면 경고만 남깁니다.
 5. ``inference_distance`` 전략을 썼다면 처리된 파일 기준의 추론위험도 캐시도 저장합니다.
    이후 ``sdqe metric --name inference_risk --synthetic <처리된 파일>`` 은 캐시를 재사용합니다.
 """
@@ -12,8 +15,10 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import time
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -21,7 +26,12 @@ import numpy as np
 from sdqe import config, io_utils
 from sdqe.metrics.privacy.inference_risk import inference_cache_key, store_inference_cache
 from sdqe.metrics.privacy.single_out_risk import record_group_ids
-from sdqe.preprocess.reduction import ReductionContext, output_path_for, reduce_records
+from sdqe.preprocess.reduction import (
+    ReductionContext,
+    output_path_for,
+    reduce_records,
+    sibling_path_for,
+)
 from sdqe.preprocess.validation import validate_pair
 from sdqe.threshold.store import check_distance_metric, load_threshold_record
 
@@ -170,11 +180,13 @@ def run_preprocess(opts: PreprocessOptions) -> dict[str, Any]:
     processed_path = io_utils.write_csv(
         text.iloc[keep].reset_index(drop=True), output_path_for(opts.output_dir)
     )
+    sibling_path = _copy_beside_input(processed_path, opts.synthetic)
     reduction.update(
         {
             "n_synthetic_after": int(len(keep)),
             "n_deleted_total": int(n_before - len(keep)),
             "processed_synthetic": processed_path.as_posix(),
+            "processed_synthetic_copy": sibling_path.as_posix() if sibling_path else None,
         }
     )
 
@@ -193,9 +205,28 @@ def run_preprocess(opts: PreprocessOptions) -> dict[str, Any]:
     reduction["elapsed_seconds"] = round(time.perf_counter() - started, 3)
     reduction_path = io_utils.save_json({**reduction, **common}, out_dir / "reduction.json")
     logger.info("Processed synthetic data (%d rows) saved to %s", len(keep), processed_path)
+    if sibling_path:
+        logger.info("  copy next to the input: %s", sibling_path)
     return {
         "validation_file": validation_path.as_posix(),
         "reduction_file": reduction_path.as_posix(),
         "processed_synthetic": processed_path.as_posix(),
+        "processed_synthetic_copy": sibling_path.as_posix() if sibling_path else None,
         "reduction": reduction,
     }
+
+
+def _copy_beside_input(processed_path: Path, synthetic: str) -> Path | None:
+    """전처리본을 입력 합성 파일 옆에 ``<이름>_processed.csv`` 로 복사합니다.
+
+    입력 폴더가 읽기 전용이거나 파일이 열려 있어 쓸 수 없으면 경고하고 ``None`` 을 돌려줍니다.
+    """
+    target = sibling_path_for(synthetic)
+    if target.resolve() == processed_path.resolve():
+        return None
+    try:
+        shutil.copyfile(processed_path, target)
+    except OSError as exc:
+        logger.warning("Could not write %s next to the input (%s); skipped.", target.name, exc)
+        return None
+    return target

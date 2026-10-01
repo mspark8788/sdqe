@@ -11,6 +11,10 @@
 그룹/전체 모드(``utility``, ``privacy``, ``report``)는 ``--config config.yaml`` 로
 설정을 받을 수 있고,
 CLI 인자가 설정 파일보다 우선합니다.
+
+모든 서브커맨드는 ``--original``/``--synthetic`` 대신 ``--data_dir`` 로 폴더를 줄 수 있습니다.
+폴더의 ``<prefix>_origin`` / ``<prefix>_synth`` 파일을 찾아 쓰고, 결과는
+``<data_dir>/<prefix>_results`` 에 저장합니다 (``sdqe.data_dir``).
 """
 
 from __future__ import annotations
@@ -26,8 +30,10 @@ from typing import Any
 import yaml
 
 from sdqe import __version__, config
+from sdqe.data_dir import DataDirError, find_data_pair
 from sdqe.metrics.runner import MetricOptions, run_metrics
 from sdqe.preprocess.pipeline import PreprocessOptions, run_preprocess
+from sdqe.preprocess.reduction import output_path_for
 from sdqe.preprocess.validation import DataValidationError
 from sdqe.report import build_options, run_report, select_metrics
 from sdqe.threshold.runner import ThresholdConfigError, ThresholdOptions, run_threshold
@@ -38,7 +44,10 @@ CONFIG_COMMANDS = ("utility", "privacy", "report")
 
 
 class _Formatter(argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter):
-    pass
+    def _get_help_string(self, action: argparse.Action) -> str:
+        if action.default is None:
+            return action.help or ""
+        return super()._get_help_string(action)
 
 
 def setup_logging(verbose: bool) -> None:
@@ -73,16 +82,37 @@ def _quantile(text: str) -> float:
 # ---------------------------------------------------------------------------
 # 인자 그룹
 # ---------------------------------------------------------------------------
-def add_data_args(
-    p: argparse.ArgumentParser, synthetic: bool = True, required: bool = True
-) -> None:
+def add_data_args(p: argparse.ArgumentParser, synthetic: bool = True) -> None:
     g = p.add_argument_group("data")
     g.add_argument(
-        "--original", required=required, help="Path to the original data (csv, parquet, xlsx)."
+        "--original",
+        default=None,
+        help="Path to the original data (csv, parquet, xlsx). Required unless --data_dir is given.",
     )
     if synthetic:
-        g.add_argument("--synthetic", required=required, help="Path to the synthetic data.")
-    g.add_argument("--output_dir", default=config.DEFAULT_OUTPUT_DIR, help="Directory for results.")
+        g.add_argument(
+            "--synthetic",
+            default=None,
+            help="Path to the synthetic data. Required unless --data_dir is given.",
+        )
+    g.add_argument(
+        "--data_dir",
+        default=None,
+        help="Folder holding '<prefix>_origin' and '<prefix>_synth' files (csv, parquet, xlsx). "
+        "Replaces --original/--synthetic; results go to <data_dir>/<prefix>_results.",
+    )
+    g.add_argument(
+        "--prefix",
+        default=None,
+        help="With --data_dir: which pair to use when the folder holds several, "
+        "e.g. 'adult' for adult_origin.csv / adult_synth.csv.",
+    )
+    g.add_argument(
+        "--output_dir",
+        default=None,
+        help=f"Directory for results. Default: {config.DEFAULT_OUTPUT_DIR}, "
+        "or <data_dir>/<prefix>_results with --data_dir.",
+    )
     g.add_argument(
         "--categorical_columns",
         nargs="+",
@@ -373,7 +403,7 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     parsers["metric"] = p
 
     p = subs.add_parser("utility", formatter_class=_Formatter, help="Compute all utility metrics.")
-    add_data_args(p, required=False)
+    add_data_args(p)
     add_group_args(p, config.UTILITY_METRICS)
     p.add_argument(
         "--alpha",
@@ -389,7 +419,7 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
     parsers["utility"] = p
 
     p = subs.add_parser("privacy", formatter_class=_Formatter, help="Compute all privacy metrics.")
-    add_data_args(p, required=False)
+    add_data_args(p)
     add_group_args(p, config.PRIVACY_METRICS)
     add_single_out_args(p)
     add_distance_args(p)
@@ -401,7 +431,7 @@ def build_parser() -> tuple[argparse.ArgumentParser, dict[str, argparse.Argument
         formatter_class=_Formatter,
         help="Run thresholds, preprocessing and all metrics, then write report.json.",
     )
-    add_data_args(p, required=False)
+    add_data_args(p)
     add_group_args(p, config.ALL_METRICS)
     add_preprocess_args(p)
     add_threshold_args(p, with_metric=False)
@@ -451,14 +481,91 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             parser.error(f"--config is available for {', '.join(CONFIG_COMMANDS)} only.")
         parsers[command].set_defaults(**load_config_file(known.config, parsers[command]))
     args = parser.parse_args(argv)
-    if args.command in CONFIG_COMMANDS:
-        missing = [n for n in ("original", "synthetic") if not getattr(args, n, None)]
-        if missing:
-            parsers[args.command].error(
-                "the following arguments are required (CLI or --config): "
-                + ", ".join(f"--{m}" for m in missing)
-            )
+    check_data_source(args, argv, parsers[args.command])
     return args
+
+
+def _given(argv: Sequence[str], name: str) -> bool:
+    """CLI 에 ``--name`` 이 직접 주어졌는지 (설정 파일 값과 구분하기 위함)."""
+    flag = f"--{name}"
+    return any(tok == flag or tok.startswith(flag + "=") for tok in argv)
+
+
+def check_data_source(
+    args: argparse.Namespace, argv: Sequence[str], sub: argparse.ArgumentParser
+) -> None:
+    """``--data_dir`` 와 ``--original``/``--synthetic`` 의 조합을 검사합니다.
+
+    둘 다 있으면 CLI 에 직접 준 쪽이 설정 파일 쪽보다 우선하고, 둘 다 CLI 에 주면 에러입니다.
+    ``--data_dir`` 가 없으면 ``--original`` (및 ``--synthetic``) 이 필요합니다.
+    """
+    has_synthetic = hasattr(args, "synthetic")
+    files_given = bool(args.original or (has_synthetic and args.synthetic))
+    if args.data_dir and files_given:
+        cli_dir = _given(argv, "data_dir")
+        cli_files = _given(argv, "original") or _given(argv, "synthetic")
+        if cli_dir and not cli_files:
+            args.original = None
+            if has_synthetic:
+                args.synthetic = None
+        elif cli_files and not cli_dir:
+            args.data_dir = None
+        else:
+            sub.error("--data_dir cannot be combined with --original/--synthetic.")
+    if args.prefix and not args.data_dir:
+        sub.error("--prefix requires --data_dir.")
+    if args.data_dir:
+        return
+    required = ("original", "synthetic") if has_synthetic else ("original",)
+    missing = [n for n in required if not getattr(args, n)]
+    if missing:
+        source = " (CLI or --config)" if args.command in CONFIG_COMMANDS else ""
+        sub.error(
+            f"the following arguments are required{source}: "
+            + ", ".join(f"--{m}" for m in missing)
+            + ". Or give a folder with --data_dir."
+        )
+    if args.output_dir is None:
+        args.output_dir = config.DEFAULT_OUTPUT_DIR
+
+
+def resolve_data_dir(args: argparse.Namespace) -> None:
+    """``--data_dir`` 폴더에서 데이터 쌍을 찾아 원본/합성 경로와 ``output_dir`` 을 채웁니다.
+
+    ``metric``/``utility``/``privacy`` 는 결과 폴더에 전처리된 합성 데이터가 있으면 그것을
+    평가합니다 (``report`` 와 같은 동작). 단, ``_synth`` 원본이 전처리본보다 새로우면 전처리본이
+    오래된 것이므로 원본을 쓰고 경고합니다.
+    """
+    if not args.data_dir:
+        return
+    need_synthetic = hasattr(args, "synthetic")
+    pair = find_data_pair(args.data_dir, args.prefix, need_synthetic=need_synthetic)
+    args.original = str(pair.original)
+    if args.output_dir is None:
+        args.output_dir = str(pair.output_dir)
+    logger.info("Data pair '%s' in %s", pair.prefix, Path(args.data_dir))
+    logger.info("  original : %s", pair.original.name)
+    if not need_synthetic:
+        logger.info("  results  : %s", args.output_dir)
+        return
+
+    synthetic = pair.synthetic
+    assert synthetic is not None
+    if args.command in ("metric", "utility", "privacy"):
+        processed = output_path_for(args.output_dir)
+        if processed.is_file():
+            if processed.stat().st_mtime >= synthetic.stat().st_mtime:
+                synthetic = processed
+            else:
+                logger.warning(
+                    "%s is newer than the preprocessed file %s; using the raw file. "
+                    "Re-run preprocess to refresh it.",
+                    synthetic.name,
+                    processed,
+                )
+    args.synthetic = str(synthetic)
+    logger.info("  synthetic: %s", synthetic if synthetic != pair.synthetic else synthetic.name)
+    logger.info("  results  : %s", args.output_dir)
 
 
 def _metric_options(values: dict[str, Any], **overrides: Any) -> MetricOptions:
@@ -501,8 +608,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     setup_logging(getattr(args, "verbose", False))
     try:
+        resolve_data_dir(args)
         dispatch(args)
-    except (DataValidationError, ThresholdConfigError, ValueError, FileNotFoundError) as exc:
+    except (
+        DataDirError,
+        DataValidationError,
+        ThresholdConfigError,
+        ValueError,
+        FileNotFoundError,
+    ) as exc:
         logger.error("%s", exc)
         if getattr(args, "verbose", False):
             logger.exception("Details")

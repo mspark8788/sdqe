@@ -282,3 +282,14 @@ def reduce_records(method: str, ctx: ReductionContext) -> ReductionResult:
 def output_path_for(output_dir: str | Path) -> Path:
     """전처리된 합성 데이터 저장 경로."""
     return Path(output_dir) / "preprocess" / config.PROCESSED_SYNTHETIC_FILENAME
+
+
+def sibling_path_for(synthetic: str | Path) -> Path:
+    """입력 합성 파일 옆에 둘 전처리본 사본 경로.
+
+    예: ``adult_synth.csv`` -> ``adult_synth_processed.csv``.
+
+    원자료 형식과 관계없이 CSV 로 저장합니다 (전처리본이 원자료 표기를 보존한 CSV 이므로).
+    """
+    path = Path(synthetic)
+    return path.with_name(f"{path.stem}{config.PROCESSED_SIBLING_SUFFIX}.csv")

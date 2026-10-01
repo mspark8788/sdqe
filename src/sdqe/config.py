@@ -64,6 +64,11 @@ EXTENDED_SCOPE_NOTE = "simulation framework extended beyond reference [2] scope"
 # 공통 기본값
 # ---------------------------------------------------------------------------
 DEFAULT_OUTPUT_DIR = "./results"
+
+# --data_dir: 폴더에서 <prefix>_origin / <prefix>_synth 파일을 찾고 <prefix>_results 에 저장
+DATA_DIR_SUFFIXES: dict[str, str] = {"origin": "_origin", "synth": "_synth"}
+DATA_DIR_EXTENSIONS: tuple[str, ...] = (".csv", ".parquet", ".xlsx")
+DATA_DIR_RESULTS_SUFFIX = "_results"
 DEFAULT_RANDOM_SEED = 42
 DEFAULT_N_JOBS = -1
 DEFAULT_N_SIMULATIONS = 100
@@ -115,6 +120,8 @@ REDUCTION_METHODS: tuple[str, ...] = ("random", "pmse_probability", "inference_d
 # inference_distance 전략의 목표값 = 임계값 * margin (기존 코드 EXCEEDED_THRESHOLD_MARGIN)
 DEFAULT_TARGET_MARGIN = 0.95
 PROCESSED_SYNTHETIC_FILENAME = "synthetic_processed.csv"
+# 입력 합성 파일 옆에 두는 전처리본 사본: adult_synth.csv -> adult_synth_processed.csv
+PROCESSED_SIBLING_SUFFIX = "_processed"
 
 # 범주형 열에서 결측으로 의심되는 표기 (형식 검증 보고용)
 MISSING_LIKE_TOKENS: tuple[str, ...] = (
